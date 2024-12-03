@@ -21,7 +21,7 @@ from lib.nekTestCase import (
 class Tools(NekTestCase):
     def setUp(self):
 
-        self.build_tools(["all"])
+        self.build_tools(["core"])
 
     @pn_pn_parallel
     def test_PnPn_Parallel(self):

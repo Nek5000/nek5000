@@ -4,7 +4,10 @@ trap onexit EXIT
 function onexit() {
   retval=$?
   if [ $retval -gt 0 ] && [ $retval -lt 11 ]; then
-     printf "\nFATAL ERROR occured during compilation!\nCheck $TOOL/build.log for details\n"
+     printf "\nFATAL ERROR occured during compilation!\n"
+     for TOOL in $LIST_ERR ; do 
+       printf "Check $TOOL/build.log for details\n"
+     done
   fi
 }
 
@@ -13,8 +16,8 @@ function onexit() {
 : ${bin_nek_tools:=`cd ../bin && pwd`}
 : ${MAXNEL:=150000}
 
-if [ $# -eq 0 ] || [ $1 == '-h' ] || [ $1 == '-help' ]; then
-   echo "Usage: maketools [clean|all|tool(s)]"
+if [ $# -eq 0 ] || [ $1 == '-h' ] || [ $1 == '--help' ]; then
+   echo "Usage: maketools [clean|all|core|tool(s)]"
    exit 0
 fi
 
@@ -195,27 +198,37 @@ function chk_list() {
 }
 
 #LIST=`ls -Cd */ | sed 's:\/::g'`
-LIST="genmap gencon genbox n2to3 reatore2 nekmerge prenek postnek nekamg_setup gmsh2nek exo2nek cgns2nek n2to3co2"
-export LIST
+LIST_CORE="genmap genbox n2to3 reatore2 nekmerge"
+LIST_ALL="genmap gencon genbox n2to3 reatore2 nekmerge prenek postnek nekamg_setup gmsh2nek exo2nek cgns2nek n2to3co2"
+LIST_ERR=""
 
 rm -rf build.log
+ierr=0
 if [ "$1" == "clean" ]; then
+   if [ "$#" -gt 1 ]; then
+     LIST=`echo $* | sed 's:\/::g' | sed 's/[^ ]* //'`
+   else
+     LIST=$LIST_ALL
+   fi
    for i in $LIST ; do
+     printf "cleaning $i ... "
      make -C ./$i clean >/dev/null 2>&1
      rm -rf ./$i/build.log
      rm -rf ../bin/$i
+     printf "done\n"
    done 
 else
-   export DOALL=''
-   if [ "$1" == "all" ]; then
-      export DOALL=1
-   fi
-   if [ "$1" != "all" ]; then
-      LISTin=`echo $* | sed 's:\/::g'`
-      for TOOL in $LISTin; do
-         chk_list "$LIST" "$TOOL"
+   LIST=""
+   if [ "$1" == "core" ]; then
+      LIST=$LIST_CORE
+   elif [ "$1" == "all" ]; then
+      LIST=$LIST_ALL
+   else
+      LIST_IN=`echo $* | sed 's:\/::g'`
+      for TOOL in $LIST_IN; do
+         chk_list "$LIST_ALL" "$TOOL"
       done
-      LIST=$LISTin
+      LIST=$LIST_IN
    fi
    set -o pipefail
    for TOOL in $LIST ; do
@@ -272,9 +285,15 @@ else
        printf "done\n"
      else
        printf "failed\n"
-       export TOOL=$TOOL
-       exit 1
+       LIST_ERR+="$TOOL "
+       ierr=$((ierr+1))
      fi
    done
+   if [ $ierr -gt 0 ]; then
+      export LIST_ERR
+      echo "FATAL ERROR: fail to compile $ierr tools: "$LIST_ERR
+      exit 1
+   fi
+
    set +o pipefail 
 fi
