@@ -544,7 +544,8 @@ c     velocity.
        itchk = 0
        do e=1,nelv
        do f=1,2*ldim
-         if (cbc(f,e,1).eq.'o  '.or.cbc(f,e,1).eq.'O  ') then
+         if (cbc(f,e,1).eq.'o  '.or.cbc(f,e,1).eq.'O  '.or.
+     $       cbc(f,e,1).eq.'on '.or.cbc(f,e,1).eq.'ON ') then
          if (intflag(f,e).eq.0) then
            itchk = 1
          endif
