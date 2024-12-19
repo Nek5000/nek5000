@@ -4,7 +4,7 @@ LIBS += ./3rd_party/seacas-exodus/build/packages/seacas/libraries/exoIIv2for32/l
 LIBS += ./3rd_party/seacas-exodus/build/packages/seacas/libraries/exodus/libexodus.a
 LIBS += ./3rd_party/netcdf/install/lib/libnetcdf.a
 
-OBJS = mod_SIZE.o exo2nek.o tet2hex.o periodicity.o quadratic.o non_right_hand_check.o  byte.o speclib.o mxm.o 
+OBJS = mod_SIZE.o exo2nek.o tet2hex.o periodicity.o quadratic.o non_right_hand_check.o  byte.o speclib.o mxm.o mod_OCTUPLESIZE.o octuple.o shell.o
 
 all: lib exo2nek
 
@@ -27,3 +27,6 @@ non_right_hand_check.o     : non_right_hand_check.f90     ;  $(FC) -c $(FFLAGS) 
 byte.o		: ../../core/byte.c		;  $(CC) -c $(CFLAGS) ../../core/byte.c
 speclib.o	: ../../core/speclib.f		;  $(FC) -c $(FFLAGS) ../../core/speclib.f
 mxm.o		: mxm.f				;  $(FC) -c $(FFLAGS) mxm.f
+mod_OCTUPLESIZE.o      : mod_OCTUPLESIZE.f90			;  $(FC) -c $(FFLAGS) mod_OCTUPLESIZE.f90
+octuple.o	: octuple.f90			;  $(FC) -c $(FFLAGS) $(INC) octuple.f90
+shell.o	: shell.f90			;  $(FC) -c $(FFLAGS) $(INC) shell.f90

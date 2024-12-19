@@ -4,7 +4,7 @@
 !
       use SIZE
 
-      integer option 
+      integer option,oct_input1,oct_input2,shell_input
       integer iexo1,flag, ne_nrh
       logical if_pre
 !-----------------------------------------------------------
@@ -75,6 +75,7 @@
 
       eacc = 0
       eacc_old = 0
+
       do iexo = 1,fnexo
       flag = 1
       call trasnfer_exo_name(flag) ! copy fluidexo to exoname
@@ -85,30 +86,30 @@
          call convert_new
       else if (num_dim.eq.3) then
          if(converting_option.EQ.1) then
+         write(6,*) 'Converting pure hex20 mesh'
          call convert_new
+
          elseif(converting_option.EQ.2) then
          write(6,*) 'Doing linear tet2hex conversion for hybrid (tet4+wedge6+hex8) mesh'
-
          call split_convert_new
 		 
        elseif (converting_option.EQ.3) then ! for quadratic tet2hex
-
-       write(6,*) 'Doing quadratic tet2hex conversion for hybrid (tet10+wedge15) mesh'
+       write(6,*) 'Doing quadratic tet2hex conversion for hybrid (tet10+wedge15+hex20) mesh'
 
       ! this is to fix some wedge element, which maybe too thin
       quadratic_option = 1
       do i =1,4
       call split_convert1_quadratic
       enddo
-      ! this is to linearize tet to make sure no non-right-hand elements
+      ! this is to linearize tet/wedge/hex to make sure no non-right-hand elements
       quadratic_option = 2
       do i = 1,2
       call split_convert1_quadratic
       enddo
+
       ! this is the actual splitting step
       quadratic_option = 3
       call split_convert1_quadratic
-
 
          endif
       endif
@@ -139,6 +140,7 @@
          call convert_new
       else if (num_dim.eq.3) then
          if(converting_option.EQ.1) then
+         write(6,*) 'Converting pure hex20 mesh'
          call convert_new
          elseif(converting_option.EQ.2) then
 
@@ -148,14 +150,14 @@
 		 
        elseif (converting_option.EQ.3) then ! for quadratic tet2hex
 
-      write(6,*) 'Doing quadratic tet2hex conversion for hybrid (tet10+wedge15) mesh'
+      write(6,*) 'Doing quadratic tet2hex conversion for hybrid (tet10+wedge15+hex20) mesh'
 
       ! this is to fix some wedge element, which maybe too thin
       quadratic_option = 1
       do i =1,4
       call split_convert1_quadratic
       enddo
-      ! this is to linearize tet to make sure no non-right-hand elements
+      ! this is to linearize tet/wedge/hex to make sure no non-right-hand elements
       quadratic_option = 2
       do i = 1,2
       call split_convert1_quadratic
@@ -163,7 +165,6 @@
       ! this is the actual splitting step
       quadratic_option = 3
       call split_convert1_quadratic
-
 
          endif
       endif
@@ -181,6 +182,22 @@
 
       etot = eacc
       num_elem = etot
+
+!      write(6,*) 'EXPERIMENTAL feature: do you want to try shell feature? (1 for yes)'
+!      write(6,*) 'this is only for fluid_only mesh 3D'
+!      write(6,*) 'extrude a solid shell region with given thickness and on given sideset' 
+!      read (5,*) shell_input
+!	  if (shell_input.eq.1)  call shell_wall()
+
+!      write(6,*) 'EXPERIMENTAL feature: do you want to try octuple splitting? (1 for yes)'
+!      read (5,*) oct_input1
+!	  if (oct_input1.eq.1)  then
+!        write(6,*)  'how many rounds of octuple splitting? (2 most)'
+!        read (5,*) oct_input2
+!        call octuple_split_multirounds(oct_input2)
+!        STOP
+!        !call octuple_split0()  ! allocate arrays, no exporting on-run
+!      endif
 
       ne_nrh = 0
       call right_hand_check(ne_nrh) ! check non-right-hand element here
@@ -399,6 +416,11 @@
         STOP
       endif
 
+
+      
+      converting_option = 1
+
+
       do i = 1, num_elem_blk
         call exgelb (exoid, idblk(i), typ, num_elem_in_block(i), &
                      num_nodes_per_elem(i), num_attr(i), ierr)
@@ -439,44 +461,49 @@
 
         if ((typ3.eq.'HEX').and.(nvert.eq.20)) then 
            write(6,*) "HEX20 is valid element in a 3D mesh."
-           write(6,*) "in this scenario, element type should all be HEX20"
-           converting_option = 1
-           etot_est = etot_est + num_elem_in_block(i)
+           ! write(6,*) "in this scenario, element type should all be HEX20"
+           converting_option = converting_option*1
         else if ((typ3.eq.'HEX').and.(nvert.eq.8)) then 
            write(6,*) "HEX8 is valid element in a 3D mesh."
            write(6,*) "assume linear hybrid mesh (tetra-hex-wedge)"
            write(6,*) "one HEX8 divide into 8 Nek hex elements"
            converting_option = 2
-           etot_est = etot_est + num_elem_in_block(i)*8
+           !etot_est = etot_est + num_elem_in_block(i)*8
         else if ((typ5.eq.'TETRA').and.(nvert.eq.4))then 
            write(6,*) "TETRA4 is valid element in a 3D mesh."
            write(6,*) "assume linear hybrid mesh (tetra-hex-wedge)"
            write(6,*) "one TETRA4 divide into 4 Nek hex elements"
            converting_option = 2
-           etot_est = etot_est + num_elem_in_block(i)*4
+           !etot_est = etot_est + num_elem_in_block(i)*4
         else if ((typ5.eq.'WEDGE').and.(nvert.eq.6)) then 
            write(6,*) "WEDGE6 is valid element in a 3D mesh."
            write(6,*) "assume linear hybrid mesh (tetra-hex-wedge)"
            write(6,*) "one WEDGE6 divide into 6 Nek hex elements"
            converting_option = 2
-           etot_est = etot_est + num_elem_in_block(i)*6
+           !etot_est = etot_est + num_elem_in_block(i)*6
         else if ((typ5.eq.'TETRA').and.(nvert.eq.10))then 
            write(6,*) "TETRA10 is valid element in a 3D mesh."
            write(6,*) "assume quadratic hybrid mesh (tetra-wedge)"
            write(6,*) "one TETRA10 divide into 4 Nek hex elements"
            converting_option = 3
-           etot_est = etot_est + num_elem_in_block(i)*4
+           !etot_est = etot_est + num_elem_in_block(i)*4
         else if ((typ5.eq.'WEDGE').and.(nvert.eq.15)) then 
            write(6,*) "WEDGE15 is valid element in a 3D mesh."
            write(6,*) "assume quadratic hybrid mesh (tetra-wedge)"
            write(6,*) "one WEDGE15 divide into 3 Nek hex elements"
            converting_option = 3
-           etot_est = etot_est + num_elem_in_block(i)*3
+           !etot_est = etot_est + num_elem_in_block(i)*3
+           !etot_est = etot_est + num_elem_in_block(i)*6
         else
           write(6,*) "ERROR: invalid element in a 3D mesh!"
           STOP
         endif
 		
+
+      endif
+      enddo
+
+
         if ((flag.eq.1).and.(iexo.eq.1)) then
          converting_option_old = converting_option
         else
@@ -486,8 +513,77 @@
           endif
         endif
 		
+
+!     etot_est = 0
+
+      do i = 1, num_elem_blk
+        call exgelb (exoid, idblk(i), typ, num_elem_in_block(i), &
+                     num_nodes_per_elem(i), num_attr(i), ierr)
+        if (ierr.lt.0) then
+          write(6,'(a,i3,a)') &
+          "ERROR: cannot read parameters for block ",i," (exgelb)"
+          STOP
+        endif
+        write (6, '("element block id   = ", i8,/       &
+                   "element type       = ", 3x,a8,/     &
+                   "num_elem_in_block  = ", i8,/        &
+                   "num_nodes_per_elem = ", i8)')       &
+                   idblk(i), typ, num_elem_in_block(i), &
+                   num_nodes_per_elem(i)
+        write(6,*)
+      nvert=num_nodes_per_elem(i)
+
+!----------------------------------------------------------------------
+! check element type
+!
+      if (num_dim.eq.2) then
+        ! if 2d mesh, only quad8 elements are allowed
+        call chcopy(typ4,typ,4)
+        if ((typ4.eq.'QUAD').and.(nvert.eq.8)) then
+        ! valid mesh
+		  write(6,*) "QUAD8 is the only valid element for 2D mesh"
+           etot_est = etot_est + num_elem_in_block(i)
+        else
+          write(6,*) "ERROR: Only QUAD8 elements are allowed in a 2D mesh!"
+          STOP
+        endif
+      endif
+
+      if (num_dim.eq.3) then
+	  
+        call chcopy(typ3,typ,3) 
+        call chcopy(typ5,typ,5) 
+
+        if (((typ3.eq.'HEX').and.(nvert.eq.20)).and.(converting_option.eq.1)) then 
+           etot_est = etot_est + num_elem_in_block(i)
+        else if (((typ3.eq.'HEX').and.(nvert.eq.20)).and.(converting_option.eq.3)) then 
+           etot_est = etot_est + num_elem_in_block(i)*8
+        else if ((typ3.eq.'HEX').and.(nvert.eq.8)) then 
+           etot_est = etot_est + num_elem_in_block(i)*8
+        else if ((typ5.eq.'TETRA').and.(nvert.eq.4))then 
+           etot_est = etot_est + num_elem_in_block(i)*4
+        else if ((typ5.eq.'WEDGE').and.(nvert.eq.6)) then 
+           etot_est = etot_est + num_elem_in_block(i)*6
+        else if ((typ5.eq.'TETRA').and.(nvert.eq.10))then 
+           etot_est = etot_est + num_elem_in_block(i)*4
+        else if ((typ5.eq.'WEDGE').and.(nvert.eq.15)) then 
+           !etot_est = etot_est + num_elem_in_block(i)*3
+           etot_est = etot_est + num_elem_in_block(i)*6
+        else
+          write(6,*) "ERROR: invalid element in a 3D mesh!"
+          STOP
+        endif
+
       endif
       enddo
+
+
+          write(6,*) "converting_option:: ", converting_option
+          write(6,*) "etot_est:: ", etot_est
+
+
+
+
 
       deallocate ( idblk )
       deallocate ( num_nodes_per_elem )
@@ -839,6 +935,7 @@
 !
       write(6,'(a)') ''
       write(6,'(a)') 'Converting SideSets ...'
+
       do iss=1,num_side_sets
         write(6,'(a)') ''
         write(6,'(a,i0,a)') 'Sideset ',idss(iss), ' ...'
@@ -860,7 +957,7 @@
            bc (4,jfc,iel+eacc_old) = iexo
         enddo
 
-      write(6,'(a,i0)') 'done :: Sideset ',idss(iss)
+        write(6,'(a,i0)') 'done :: Sideset ',idss(iss)
       enddo
 
       deallocate (x_exo,y_exo,z_exo,connect)
@@ -1717,7 +1814,7 @@
 
       use SIZE
 
-      integer iel
+      integer*8 iel
       real*8     xx(8), yy(8), zz(8)
       real*8   rgroup, buf2(30)
 
@@ -1779,11 +1876,25 @@
       subroutine write_curve
 
       use SIZE
-      integer*8 iel
+      integer*8 iel,iedge,ncurv,nedge
       real*8     buf2(30)
       real*8     rcurve
 
       character(1) cc
+
+      integer edge_mid(12)
+      save    edge_mid
+      data    edge_mid /2,6,8,4,20,24,26,22,10,12,18,16/
+
+      real    x3(27),y3(27),z3(27),xyz(3,3)
+      real    mide(3),dist0,dist1
+
+      integer e3(3,12)
+      save    e3
+      data    e3 /  1, 2, 3,    3, 6, 9,    9, 8, 7,    7, 4, 1, &
+                   19,20,21,   21,24,27,   27,26,25,   25,22,19, &
+                    1,10,19,    3,12,21,    9,18,27,    7,16,25  /
+
 
       do iel=1,num_elem
          call gen_rea_midside_e(iel)
@@ -1799,6 +1910,7 @@
 
       rcurve = ncurv
       call byte_write(rcurve,2, ierr)
+      write(6,*) 'curves: ',ncurv
 
       do iel=1,num_elem
         do iedge=1,nedge
@@ -1816,13 +1928,75 @@
         enddo
       enddo
 
+!      nedge = 4 + 8*(num_dim-2)
+!      ncurv = 0
+!
+!      do iel=1,num_elem
+!        do iedge=1,nedge
+!
+!            do j=1,3
+!               xyz(1,j) = xm1(e3(j,iedge),1,1,iel)
+!               xyz(2,j) = ym1(e3(j,iedge),1,1,iel)
+!               xyz(3,j) = zm1(e3(j,iedge),1,1,iel)
+!            enddo
+!
+!            call average2vec(mide(1), xyz(1,1), xyz(1,3))  
+!
+!            call distance(xyz(1,1),xyz(1,3),dist0)
+!            call distance(mide(1),xyz(1,2),dist1)
+!
+!            if (dist1.gt.(1e-3*dist0)) then
+!
+!            ncurv = ncurv + 1
+!   
+!            endif
+!
+!        enddo
+!      enddo
+!	  
+!      rcurve = ncurv
+!      call byte_write(rcurve,2, ierr)
+!      write(6,*) 'curves: ',ncurv
+!
+!      do iel=1,num_elem
+!        do iedge=1,nedge
+!
+!            do j=1,3
+!               xyz(1,j) = xm1(e3(j,iedge),1,1,iel)
+!               xyz(2,j) = ym1(e3(j,iedge),1,1,iel)
+!               xyz(3,j) = zm1(e3(j,iedge),1,1,iel)
+!            enddo
+!
+!            call average2vec(mide(1), xyz(1,1), xyz(1,3))  
+!
+!            call distance(xyz(1,1),xyz(1,3),dist0)
+!            call distance(mide(1),xyz(1,2),dist1)
+!
+!            if (dist1.gt.(1e-3*dist0)) then
+!
+!            curve(1,iedge,iel) = xm1(edge_mid(iedge),1,1,iel)
+!            curve(2,iedge,iel) = ym1(edge_mid(iedge),1,1,iel)
+!            curve(3,iedge,iel) = zm1(edge_mid(iedge),1,1,iel)
+!            cc='m'
+!            buf2(1) = iel
+!            buf2(2) = iedge
+!            call copy       (buf2(3),curve(1,iedge,iel),5)
+!            call blank      (buf2(8),8)
+!            call chcopy     (buf2(8),cc,1)
+!            call byte_write (buf2,16,ierr)
+!   
+!            endif
+!
+!        enddo
+!      enddo
+
       return
       end
 !-----------------------------------------------------------------------
       subroutine write_bc
       
       use SIZE
-      integer*8 iel
+      integer*8 iel,ibc,ifc,nbc,nface
       real*8  rbc, buf2(30)
 
       character(3) ch3
@@ -1903,6 +2077,7 @@
 !-----------------------------------------------------------------------
       subroutine close_re2
 
+      write(6,*) 'calling close_re2'
       call byte_close (ierr)
 
       return
@@ -2218,6 +2393,14 @@
       subroutine rzero(A,N)
       integer*8 N,I
       real A(1)
+      DO 100 I = 1, N
+ 100     A(I ) = 0.0
+      return
+      END
+!-----------------------------------------------------------------------
+      subroutine rzero8(A,N)
+      integer*8 N,I
+      real*8 A(1)
       DO 100 I = 1, N
  100     A(I ) = 0.0
       return

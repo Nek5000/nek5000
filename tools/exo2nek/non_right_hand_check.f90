@@ -174,6 +174,47 @@
 
       return
       end
+!!--------------------------------------------------------------------
+      subroutine nek_check_non_right_hand_hex27(ifleft,hex27)
+      use SIZE
+      logical ifnonrighthand,ifleft 
+      real hex27(3,27)
+      integer iel,ne_nrh
+      integer hex8_to_hex27_vertex(8)
+      data hex8_to_hex27_vertex /1,3,7,9,19,21,25,27/ ! for nek non-right-hand element check
+      real XYZ(3,8)
+      real V1,V2,V3,V4,V5,V6,V7,V8
+
+      do iver = 1,8
+       XYZ(1,iver) = hex27(1,hex8_to_hex27_vertex(iver))
+       XYZ(2,iver) = hex27(2,hex8_to_hex27_vertex(iver))
+       XYZ(3,iver) = hex27(3,hex8_to_hex27_vertex(iver))
+      enddo
+	  
+      V1= VOLUM0(XYZ(1,2),XYZ(1,3),XYZ(1,5),XYZ(1,1))
+      V2= VOLUM0(XYZ(1,4),XYZ(1,1),XYZ(1,6),XYZ(1,2))
+      V3= VOLUM0(XYZ(1,1),XYZ(1,4),XYZ(1,7),XYZ(1,3))
+      V4= VOLUM0(XYZ(1,3),XYZ(1,2),XYZ(1,8),XYZ(1,4))
+      V5=-VOLUM0(XYZ(1,6),XYZ(1,7),XYZ(1,1),XYZ(1,5))
+      V6=-VOLUM0(XYZ(1,8),XYZ(1,5),XYZ(1,2),XYZ(1,6))
+      V7=-VOLUM0(XYZ(1,5),XYZ(1,8),XYZ(1,3),XYZ(1,7))
+      V8=-VOLUM0(XYZ(1,7),XYZ(1,6),XYZ(1,4),XYZ(1,8))
+
+      if ((V1.LE.0.0).OR.(V2.LE.0.0).OR. &
+       (V3.LE.0.0).OR.(V4.LE.0.0).OR. &
+       (V5.LE.0.0).OR.(V6.LE.0.0).OR. &
+       (V7.LE.0.0).OR.(V8.LE.0.0)) then
+   
+      !write(6,*) 'WARNINGb: Detected non-right-handed element.'
+      !write(6,*) 'at location:',XYZ(1,1),',',XYZ(2,1),',',XYZ(3,1)
+      ! ne_nrh = ne_nrh + 1
+    
+	   ifleft = .true.
+
+      endif
+
+      return
+      end
 !------------------------------------------------------------------------
       subroutine nek_check_non_right_hand_per_element(XYZorg,ifnonrighthand)
       use SIZE
@@ -270,7 +311,6 @@
 
       return
       end
-!-----------------------------------------------------------------------
 !--------------------------------------------------------------------
       subroutine fix_left_hand(iel)
 ! fix fix_left_hand element

@@ -4,12 +4,12 @@
 ! !
 ! 
 ! quadratic_option = 1:
-! pre-check element, especially for wedge elements
+! pre-check element, for wedge elements only
 ! if non-right-hand elements are generated.
 ! adjust wedge nodes on the triangle surface that are with sideset>0
 !
 ! quadratic_option = 2:
-! pre-check element
+! pre-check element, for tet/wedge/hex
 ! if non-right-hand elements are generated.
 ! adjust mid-edge nodes
 !
@@ -84,7 +84,8 @@
         write(6,*) 'nvert, ', nvert
 		
 
-        if (nvert.eq.10) then ! tet10
+        if (nvert.eq.10) then ! splitting tet10
+		
           do iel_exo = 1,num_elem_in_block(iblk)
            !write(6,*) 'iel_exo, ',iel_exo
 
@@ -103,8 +104,7 @@
        tetver(1,ivert) = x_exo(connect(vert_index_exo))
        tetver(2,ivert) = y_exo(connect(vert_index_exo))
        tetver(3,ivert) = z_exo(connect(vert_index_exo))
-       enddo
- 
+       enddo 
           else if  (quadratic_option.eq.2) then
 
 ! linearize tet elements if non-right hand elements are created
@@ -113,7 +113,7 @@
        if (num_side_sets.ne.0) then
         do ifc_exo=1,4
          tetss(ifc_exo) = 0
-         tetss(ifc_exo) = exoss(ifc_exo,iel_exo)
+         tetss(ifc_exo) = exoss(ifc_exo,iel_exo_g)
         enddo
        endif
 
@@ -484,8 +484,8 @@
        wedgever(3,ivert) = z_exo(connect(ivert_index_exo))
        enddo	
 
-       call wedgetohex_quadratic(hexver,wedgever,hexss,wedgess,hasnrh)
-
+       !call wedgetohex_quadratic(hexver,wedgever,hexss,wedgess,hasnrh)
+       call wedgetohex_quadratic2(hexver,wedgever,hexss,wedgess,hasnrh)
 !       do i = 1,3
 !       iel_nek = iel_nek + 1
 !       call if_in_nj_list(iel_nek,ifnj)
@@ -577,9 +577,11 @@
 
 !  given wedge15 vertices, and return you 3 hex coords.
 !       call wedgetohex(hexver,wedgever,hexss,wedgess)
-       call wedgetohex_quadratic(hexver,wedgever,hexss,wedgess,hasnrh)
-       
-       do ihex = 1,3
+!       call wedgetohex_quadratic(hexver,wedgever,hexss,wedgess,hasnrh)
+       call wedgetohex_quadratic2(hexver,wedgever,hexss,wedgess,hasnrh)
+
+	   
+       do ihex = 1,6
           iel_nek = iel_nek + 1
           eacc = eacc + 1
           do inekvert = 1,27
@@ -598,17 +600,181 @@
              endif
           enddo
        enddo
-		 
-		 
+
           endif
 
-          enddo
+          enddo  !           do iel_exo = 1,num_elem_in_block(iblk)
 	
-     
-	    else 
+        else if (nvert.eq.20) then ! splitting hex20
 		
-        write(6,*) 'ERROR, invalid element type'
+          do iel_exo = 1,num_elem_in_block(iblk)
+           !write(6,*) 'iel_exo, ',iel_exo
 
+         iel_exo_g = iel_exo ! iel_exo is element number in this block
+		 !   iel_exo_g is global exo element number
+         if (iblk.gt.1) then
+            do iblk1 = 1,iblk-1
+             iel_exo_g = iel_exo_g + num_elem_in_block(iblk1)
+            enddo
+         endif
+		 
+          if (quadratic_option.eq.1) then
+! only read hex20, but doing nothing
+       do ivert = 1,20
+       vert_index_exo = vert_index_exo + 1  ! advance vertice index
+       ehexver(1,ivert) = x_exo(connect(vert_index_exo))
+       ehexver(2,ivert) = y_exo(connect(vert_index_exo))
+       ehexver(3,ivert) = z_exo(connect(vert_index_exo))
+       enddo 
+
+          else if  (quadratic_option.eq.2) then
+
+! linearize tet elements if non-right hand elements are created
+       n = 6
+       call rzero_int2(ehexss,n) 
+       if (num_side_sets.ne.0) then
+        do ifc_exo=1,6
+         ehexss(ifc_exo) = 0
+         ehexss(ifc_exo) = exoss(ifc_exo,iel_exo_g)
+        enddo
+       endif
+
+       icorrection = 0
+
+       do while (.True.)
+       hasnrh = .false.
+	   
+       do ivert = 1, 20
+       ivert_index_exo = vert_index_exo + ivert  
+       ehexver(1,ivert) = x_exo(connect(ivert_index_exo))
+       ehexver(2,ivert) = y_exo(connect(ivert_index_exo))
+       ehexver(3,ivert) = z_exo(connect(ivert_index_exo))
+       enddo
+
+       call ehexto8hex_quadratic(hexver,ehexver,hexss,ehexss,hasnrh) 
+
+       if (hasnrh) then
+
+          icorrection = icorrection + 1
+          if (icorrection.gt.10) then
+           write(6,*) 'stuck in non-right-hand correction of hex20'
+           write(6,*) 'at ', ehexver(1,1),ehexver(2,1),ehexver(3,1)
+           exit
+          endif
+	   
+          ! adjust mid-edge node position if non-right-hand elements detected
+          call average2vec(vert1(1),ehexver(1,1),ehexver(1,2))
+          call average2vec(vert2(1),vert1(1),ehexver(1,9))
+          call assignvec(ehexver(1,9),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,2),ehexver(1,3))
+          call average2vec(vert2(1),vert1(1),ehexver(1,10))
+          call assignvec(ehexver(1,10),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,3),ehexver(1,4))
+          call average2vec(vert2(1),vert1(1),ehexver(1,11))
+          call assignvec(ehexver(1,11),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,1),ehexver(1,4))
+          call average2vec(vert2(1),vert1(1),ehexver(1,12))
+          call assignvec(ehexver(1,12),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,1),ehexver(1,5))
+          call average2vec(vert2(1),vert1(1),ehexver(1,13))
+          call assignvec(ehexver(1,13),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,2),ehexver(1,6))
+          call average2vec(vert2(1),vert1(1),ehexver(1,14))
+          call assignvec(ehexver(1,14),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,3),ehexver(1,7))
+          call average2vec(vert2(1),vert1(1),ehexver(1,15))
+          call assignvec(ehexver(1,15),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,4),ehexver(1,8))
+          call average2vec(vert2(1),vert1(1),ehexver(1,16))
+          call assignvec(ehexver(1,16),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,5),ehexver(1,6))
+          call average2vec(vert2(1),vert1(1),ehexver(1,17))
+          call assignvec(ehexver(1,17),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,6),ehexver(1,7))
+          call average2vec(vert2(1),vert1(1),ehexver(1,18))
+          call assignvec(ehexver(1,18),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,7),ehexver(1,8))
+          call average2vec(vert2(1),vert1(1),ehexver(1,19))
+          call assignvec(ehexver(1,19),vert2(1))
+
+          call average2vec(vert1(1),ehexver(1,5),ehexver(1,8))
+          call average2vec(vert2(1),vert1(1),ehexver(1,20))
+          call assignvec(ehexver(1,20),vert2(1))
+
+          do ivert = 1, 20
+          ivert_index_exo = vert_index_exo + ivert  
+          x_exo(connect(ivert_index_exo)) = ehexver(1,ivert) ! return adjusted tet
+          y_exo(connect(ivert_index_exo)) = ehexver(2,ivert)
+          z_exo(connect(ivert_index_exo)) = ehexver(3,ivert)
+          enddo
+
+       else
+        exit    ! break if no non-right-hand elements
+       endif
+
+      enddo ! do while (.True.)
+	  
+       vert_index_exo = vert_index_exo + 20
+
+
+      else if (quadratic_option.eq.3) then
+! actual splitting.
+       n = 6
+       call rzero_int2(ehexss,6)
+       if (num_side_sets.ne.0) then
+        do ifc_exo=1,6
+         ehexss(ifc_exo) = 0
+         ehexss(ifc_exo) = exoss(ifc_exo,iel_exo_g)
+        enddo
+       endif
+
+       do ivert = 1, 20
+       vert_index_exo = vert_index_exo + 1  
+       ehexver(1,ivert) = x_exo(connect(vert_index_exo))
+       ehexver(2,ivert) = y_exo(connect(vert_index_exo))
+       ehexver(3,ivert) = z_exo(connect(vert_index_exo))
+       enddo
+
+       call ehexto8hex_quadratic(hexver,ehexver,hexss,ehexss,hasnrh) 
+
+       do ihex = 1,8
+          iel_nek = iel_nek + 1
+          eacc = eacc + 1
+          do inekvert = 1,27
+             xm1(inekvert,1,1,iel_nek) = hexver(1,inekvert,ihex)&
+       + shiftvector(1)
+             ym1(inekvert,1,1,iel_nek) = hexver(2,inekvert,ihex)& 
+       + shiftvector(2)
+             zm1(inekvert,1,1,iel_nek) = hexver(3,inekvert,ihex)& 
+       + shiftvector(3)
+          enddo
+          do ifc=1,6
+             if(hexss(ifc,ihex).gt.0) then
+              bc(5,ifc,iel_nek) = hexss(ifc,ihex)
+              bc(4,ifc,iel_nek) = iexo
+              cbc(ifc,iel_nek)   = 'EXO' ! dummy boundary condition
+             endif
+          enddo
+       enddo
+
+        endif
+
+        enddo       !     do iel_exo = 1,num_elem_in_block(iblk)
+
+
+	    else 
+
+        write(6,*) 'ERROR, invalid element type'
         endif
 
       enddo
@@ -938,7 +1104,7 @@
 
       call transfinite_tri(tri(1,1,4),fc(1,4),mp(1,1,4))
 
-      do i=1,6*4
+      do i=1,24
       hexss(i,1)=0
       enddo
 
@@ -1124,6 +1290,7 @@
 	  
       return
       end	  
+!---------------------------------------------------------------------------------
 !--------------------------------------------------------------------
       subroutine wedgetohex_quadratic(hexver,wedgever,hexss,wedgess,hasnrh)
 ! quadratic version of wedge-to-hex
@@ -1329,6 +1496,1089 @@
       return
       end	 
 !--------------------------------------------------------------------------s
+!--------------------------------------------------------------------
+      subroutine wedgetohex_quadratic2(hexver,wedgever,hexss,wedgess,hasnrh)
+! quadratic version of wedge-to-hex
+      real*8 wedgever(3,15) ! tet vertices, actually only wedge15 is needed, but ICEM cannot dump wedge15...
+      real*8 wedgeface(3,5) ! tet face center
+      real*8 wedgecen(3,1) ! tet vol center
+      real*8 hex8(3,8),edge12(3,12) ! edge12 here follows nek definition of edge 
+      real*8 hexver(3,27,6) ! four hex vertices in nek format.
+      real*8 tempvec(3,3) ! temperary vector variable
+
+      integer wedgess(5),hexss(6,6)
+
+      real*8 tri(3,6,2),tmp(3,9,2),tfc(3,2)
+      real*8 quad(3,8,3),qmp(3,12,3),qfc(3,3)
+    
+	  real*8 cr1(3,3),x(3),beta,ver(3)
+
+      logical hasnrh,ifnrh,ifnegjac
+
+! patch 1st tri6 info
+      call assignvec(tri(1,1,1),wedgever(1,1))
+      call assignvec(tri(1,2,1),wedgever(1,2))
+      call assignvec(tri(1,3,1),wedgever(1,3))
+      call assignvec(tri(1,4,1),wedgever(1,7))
+      call assignvec(tri(1,5,1),wedgever(1,8))
+      call assignvec(tri(1,6,1),wedgever(1,9))
+      
+      call transfinite_tri(tri(1,1,1),tfc(1,1),tmp(1,1,1))
+      call assignvec(wedgeface(1,4),tfc(1,1))
+
+! patch 2nd tri6 info
+      call assignvec(tri(1,1,2),wedgever(1,4))
+      call assignvec(tri(1,2,2),wedgever(1,5))
+      call assignvec(tri(1,3,2),wedgever(1,6))
+      call assignvec(tri(1,4,2),wedgever(1,13))
+      call assignvec(tri(1,5,2),wedgever(1,14))
+      call assignvec(tri(1,6,2),wedgever(1,15))
+      
+      call transfinite_tri(tri(1,1,2),tfc(1,2),tmp(1,1,2))
+      call assignvec(wedgeface(1,5),tfc(1,2))
+
+      call average2vec(wedgecen(1,1),tfc(1,1),tfc(1,2))
+
+! patch 1st quad8 info
+      call assignvec(quad(1,1,1),wedgever(1,1))
+      call assignvec(quad(1,2,1),wedgever(1,2))
+      call assignvec(quad(1,3,1),wedgever(1,5))
+      call assignvec(quad(1,4,1),wedgever(1,4))
+      call assignvec(quad(1,5,1),wedgever(1,7))
+      call assignvec(quad(1,6,1),wedgever(1,11))
+      call assignvec(quad(1,7,1),wedgever(1,13))
+      call assignvec(quad(1,8,1),wedgever(1,10))
+      
+      call transfinite_quad(quad(1,1,1),qfc(1,1),qmp(1,1,1)) 
+      call assignvec(wedgeface(1,1),qfc(1,1))
+
+! patch 2nd quad8 info
+      call assignvec(quad(1,1,2),wedgever(1,3))
+      call assignvec(quad(1,2,2),wedgever(1,2))
+      call assignvec(quad(1,3,2),wedgever(1,5))
+      call assignvec(quad(1,4,2),wedgever(1,6))
+      call assignvec(quad(1,5,2),wedgever(1,8))
+      call assignvec(quad(1,6,2),wedgever(1,11))
+      call assignvec(quad(1,7,2),wedgever(1,14))
+      call assignvec(quad(1,8,2),wedgever(1,12))
+      
+      call transfinite_quad(quad(1,1,2),qfc(1,2),qmp(1,1,2))      
+      call assignvec(wedgeface(1,2),qfc(1,2))
+	
+! patch 3nd quad8 info
+      call assignvec(quad(1,1,3),wedgever(1,1))
+      call assignvec(quad(1,2,3),wedgever(1,3))
+      call assignvec(quad(1,3,3),wedgever(1,6))
+      call assignvec(quad(1,4,3),wedgever(1,4))
+      call assignvec(quad(1,5,3),wedgever(1,9))
+      call assignvec(quad(1,6,3),wedgever(1,12))
+      call assignvec(quad(1,7,3),wedgever(1,15))
+      call assignvec(quad(1,8,3),wedgever(1,10))
+      
+      call transfinite_quad(quad(1,1,3),qfc(1,3),qmp(1,1,3))    
+      call assignvec(wedgeface(1,3),qfc(1,3))
+
+      do i=1,6*6
+      hexss(i,1)=0
+      enddo
+
+!  assign coordinates to 6 hex.
+!  hex 1
+      hexss(1,1) = wedgess(1)
+      hexss(4,1) = wedgess(3)
+      hexss(5,1) = wedgess(4)
+
+      call assignvec(hex8(1,1),wedgever(1,1))
+      call assignvec(hex8(1,2),wedgever(1,7))
+      call assignvec(hex8(1,3),wedgeface(1,4))
+      call assignvec(hex8(1,4),wedgever(1,9))
+      call assignvec(hex8(1,5),wedgever(1,10))
+      call assignvec(hex8(1,6),wedgeface(1,1))
+      call assignvec(hex8(1,7),wedgecen(1,1))
+      call assignvec(hex8(1,8),wedgeface(1,3))
+
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,1),wedgever(1,7),wedgever(1,2))
+      call assignvec(edge12(1,1),ver(1)) 
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,3))
+      call assignvec(cr1(1,2),wedgeface(1,4))
+      call assignvec(cr1(1,3),wedgever(1,7)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,2))	  
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,2))
+      call assignvec(cr1(1,2),wedgeface(1,4))
+      call assignvec(cr1(1,3),wedgever(1,9)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,3))	  
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,1),wedgever(1,9),wedgever(1,3))
+      call assignvec(edge12(1,4),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,10),wedgeface(1,1),wedgever(1,11))
+      call assignvec(edge12(1,5),ver(1)) 
+ 
+ 
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,12))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,1)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,6))	  
+ 
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,11))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,3)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,7))	  
+  
+      call quick_quater_point_from_curve(ver(1),wedgever(1,10),wedgeface(1,3),wedgever(1,12))
+      call assignvec(edge12(1,8),ver(1)) 
+   
+   
+      call quick_quater_point_from_curve(ver(1),wedgever(1,1),wedgever(1,10),wedgever(1,4))
+      call assignvec(edge12(1,9),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,7),wedgeface(1,1),wedgever(1,13))
+      call assignvec(edge12(1,10),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgeface(1,4),wedgecen(1,1),wedgeface(1,5))
+      call assignvec(edge12(1,11),ver(1)) 
+ 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,9),wedgeface(1,3),wedgever(1,15))
+      call assignvec(edge12(1,12),ver(1)) 
+   
+      call hex20tohex27(hexver(1,1,1),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+!  hex 2
+      hexss(1,2) = wedgess(1)
+      hexss(2,2) = wedgess(2)
+      hexss(5,2) = wedgess(4)
+
+      call assignvec(hex8(1,1),wedgever(1,7))
+      call assignvec(hex8(1,2),wedgever(1,2))
+      call assignvec(hex8(1,3),wedgever(1,8))
+      call assignvec(hex8(1,4),wedgeface(1,4))
+      call assignvec(hex8(1,5),wedgeface(1,1))
+      call assignvec(hex8(1,6),wedgever(1,11))
+      call assignvec(hex8(1,7),wedgeface(1,2))
+      call assignvec(hex8(1,8),wedgecen(1,1))
+      
+  
+      call quick_quater_point_from_curve(ver(1),wedgever(1,2),wedgever(1,7),wedgever(1,1))
+      call assignvec(edge12(1,1),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,2),wedgever(1,8),wedgever(1,3))
+      call assignvec(edge12(1,2),ver(1)) 
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,1))
+      call assignvec(cr1(1,2),wedgeface(1,4))
+      call assignvec(cr1(1,3),wedgever(1,8)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,3))	  
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,3))
+      call assignvec(cr1(1,2),wedgeface(1,4))
+      call assignvec(cr1(1,3),wedgever(1,7)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,4))	  
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,11),wedgeface(1,1),wedgever(1,10))
+      call assignvec(edge12(1,5),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,11),wedgeface(1,2),wedgever(1,12))
+      call assignvec(edge12(1,6),ver(1)) 
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,10))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,2)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,7))	  
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,12))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,1)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,8))	  
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,7),wedgeface(1,1),wedgever(1,13))
+      call assignvec(edge12(1,9),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,2),wedgever(1,11),wedgever(1,5))
+      call assignvec(edge12(1,10),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,8),wedgeface(1,2),wedgever(1,14))
+      call assignvec(edge12(1,11),ver(1)) 
+	  
+      call quick_quater_point_from_curve(ver(1),wedgeface(1,4),wedgecen(1,1),wedgeface(1,5))
+      call assignvec(edge12(1,12),ver(1)) 
+
+
+      call hex20tohex27(hexver(1,1,2),hex8(1,1),edge12(1,1))
+      !call hex8tohex27(hexver(1,1,1),hex8(1,1))
+
+      ifnrh = .false.
+  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+!  hex 3
+      hexss(2,3) = wedgess(2)
+      hexss(3,3) = wedgess(3)
+      hexss(5,3) = wedgess(4)
+
+      call assignvec(hex8(1,1),wedgeface(1,4))
+      call assignvec(hex8(1,2),wedgever(1,8))
+      call assignvec(hex8(1,3),wedgever(1,3))
+      call assignvec(hex8(1,4),wedgever(1,9))
+      call assignvec(hex8(1,5),wedgecen(1,1))
+      call assignvec(hex8(1,6),wedgeface(1,2))
+      call assignvec(hex8(1,7),wedgever(1,12))
+      call assignvec(hex8(1,8),wedgeface(1,3))
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,1))
+      call assignvec(cr1(1,2),wedgeface(1,4))
+      call assignvec(cr1(1,3),wedgever(1,8)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,1))	  
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,3),wedgever(1,8),wedgever(1,2))
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,3),wedgever(1,9),wedgever(1,1))
+      call assignvec(edge12(1,3),ver(1)) 
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,2))
+      call assignvec(cr1(1,2),wedgeface(1,4))
+      call assignvec(cr1(1,3),wedgever(1,9)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,4))	  
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,10))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,2)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,5))	  
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,12),wedgeface(1,2),wedgever(1,11))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,12),wedgeface(1,3),wedgever(1,10))
+      call assignvec(edge12(1,7),ver(1)) 
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,11))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,3)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,8))	  
+
+
+      call quick_quater_point_from_curve(ver(1),wedgeface(1,4),wedgecen(1,1),wedgeface(1,5))
+      call assignvec(edge12(1,9),ver(1))
+      call quick_quater_point_from_curve(ver(1),wedgever(1,8),wedgeface(1,2),wedgever(1,14))
+      call assignvec(edge12(1,10),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,3),wedgever(1,12),wedgever(1,6))
+      call assignvec(edge12(1,11),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,9),wedgeface(1,3),wedgever(1,15))
+      call assignvec(edge12(1,12),ver(1)) 
+
+
+      call hex20tohex27(hexver(1,1,3),hex8(1,1),edge12(1,1))
+      !call hex8tohex27(hexver(1,1,2),hex8(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+      
+!  hex 4
+      hexss(1,4) = wedgess(1)
+      hexss(4,4) = wedgess(3)
+      hexss(6,4) = wedgess(5)
+
+      call assignvec(hex8(1,1),wedgever(1,10))
+      call assignvec(hex8(1,2),wedgeface(1,1))
+      call assignvec(hex8(1,3),wedgecen(1,1))
+      call assignvec(hex8(1,4),wedgeface(1,3))
+      call assignvec(hex8(1,5),wedgever(1,4))
+      call assignvec(hex8(1,6),wedgever(1,13))
+      call assignvec(hex8(1,7),wedgeface(1,5))
+      call assignvec(hex8(1,8),wedgever(1,15))
+	  
+      call quick_quater_point_from_curve(ver(1),wedgever(1,10),wedgeface(1,1),wedgever(1,11))
+      call assignvec(edge12(1,1),ver(1)) 
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,12))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,1)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,2))	  
+ 
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,11))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,3)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,3))	  
+  
+      call quick_quater_point_from_curve(ver(1),wedgever(1,10),wedgeface(1,3),wedgever(1,12))
+      call assignvec(edge12(1,4),ver(1)) 
+
+    
+ 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,4),wedgever(1,13),wedgever(1,5))
+      call assignvec(edge12(1,5),ver(1)) 
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,6))
+      call assignvec(cr1(1,2),wedgeface(1,5))
+      call assignvec(cr1(1,3),wedgever(1,13)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,6))	  
+ 
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,5))
+      call assignvec(cr1(1,2),wedgeface(1,5))
+      call assignvec(cr1(1,3),wedgever(1,15)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,7))	  
+  
+      call quick_quater_point_from_curve(ver(1),wedgever(1,4),wedgever(1,15),wedgever(1,6))
+      call assignvec(edge12(1,8),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,4),wedgever(1,10),wedgever(1,1))
+      call assignvec(edge12(1,9),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,13),wedgeface(1,1),wedgever(1,7))
+      call assignvec(edge12(1,10),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgeface(1,5),wedgecen(1,1),wedgeface(1,4))
+      call assignvec(edge12(1,11),ver(1)) 
+ 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,15),wedgeface(1,3),wedgever(1,9))
+      call assignvec(edge12(1,12),ver(1)) 
+
+
+      call hex20tohex27(hexver(1,1,4),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+	  
+!  hex 5
+      hexss(1,5) = wedgess(1)
+      hexss(2,5) = wedgess(2)
+      hexss(6,5) = wedgess(5)
+
+      call assignvec(hex8(1,1),wedgeface(1,1))
+      call assignvec(hex8(1,2),wedgever(1,11))
+      call assignvec(hex8(1,3),wedgeface(1,2))
+      call assignvec(hex8(1,4),wedgecen(1,1))
+      call assignvec(hex8(1,5),wedgever(1,13))
+      call assignvec(hex8(1,6),wedgever(1,5))
+      call assignvec(hex8(1,7),wedgever(1,14))
+      call assignvec(hex8(1,8),wedgeface(1,5))
+   
+      call quick_quater_point_from_curve(ver(1),wedgever(1,11),wedgeface(1,1),wedgever(1,10))
+      call assignvec(edge12(1,1),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,11),wedgeface(1,2),wedgever(1,12))
+      call assignvec(edge12(1,2),ver(1)) 
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,10))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,2)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,3))	  
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,12))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,1)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,4))	
+
+   
+      call quick_quater_point_from_curve(ver(1),wedgever(1,5),wedgever(1,13),wedgever(1,4))
+      call assignvec(edge12(1,5),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,5),wedgever(1,14),wedgever(1,6))
+      call assignvec(edge12(1,6),ver(1)) 
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,4))
+      call assignvec(cr1(1,2),wedgeface(1,5))
+      call assignvec(cr1(1,3),wedgever(1,14)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,7))	  
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,6))
+      call assignvec(cr1(1,2),wedgeface(1,5))
+      call assignvec(cr1(1,3),wedgever(1,13)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,8))	  
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,13),wedgeface(1,1),wedgever(1,7))
+      call assignvec(edge12(1,9),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,5),wedgever(1,11),wedgever(1,2))
+      call assignvec(edge12(1,10),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,14),wedgeface(1,2),wedgever(1,8))
+      call assignvec(edge12(1,11),ver(1)) 
+	  
+      call quick_quater_point_from_curve(ver(1),wedgeface(1,5),wedgecen(1,1),wedgeface(1,4))
+      call assignvec(edge12(1,12),ver(1)) 
+
+      call hex20tohex27(hexver(1,1,5),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+   
+!  hex 6
+      hexss(2,6) = wedgess(2)
+      hexss(3,6) = wedgess(3)
+      hexss(6,6) = wedgess(5)
+
+      call assignvec(hex8(1,1),wedgecen(1,1))
+      call assignvec(hex8(1,2),wedgeface(1,2))
+      call assignvec(hex8(1,3),wedgever(1,12))
+      call assignvec(hex8(1,4),wedgeface(1,3))
+      call assignvec(hex8(1,5),wedgeface(1,5))
+      call assignvec(hex8(1,6),wedgever(1,14))
+      call assignvec(hex8(1,7),wedgever(1,6))
+      call assignvec(hex8(1,8),wedgever(1,15))
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0
+      call assignvec(cr1(1,1),wedgever(1,10))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,2))
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,1))	  
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,12),wedgeface(1,2),wedgever(1,11))
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,12),wedgeface(1,3),wedgever(1,10))
+      call assignvec(edge12(1,3),ver(1)) 
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,11))
+      call assignvec(cr1(1,2),wedgecen(1,1))
+      call assignvec(cr1(1,3),wedgeface(1,3)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,4))	  
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,4))
+      call assignvec(cr1(1,2),wedgeface(1,5))
+      call assignvec(cr1(1,3),wedgever(1,14)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,5))	  
+
+      call quick_quater_point_from_curve(ver(1),wedgever(1,6),wedgever(1,14),wedgever(1,5))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,6),wedgever(1,15),wedgever(1,4))
+      call assignvec(edge12(1,7),ver(1)) 
+
+      x(1) = 0.0
+      x(2) = 2.0/3.0
+      x(3) = 1.0	  
+      call assignvec(cr1(1,1),wedgever(1,5))
+      call assignvec(cr1(1,2),wedgeface(1,5))
+      call assignvec(cr1(1,3),wedgever(1,15)) 
+      beta = 5.0/6.0
+      call curve(cr1,x,beta,edge12(1,8))	  
+
+      call quick_quater_point_from_curve(ver(1),wedgeface(1,5),wedgecen(1,1),wedgeface(1,4))
+      call assignvec(edge12(1,9),ver(1))
+      call quick_quater_point_from_curve(ver(1),wedgever(1,14),wedgeface(1,2),wedgever(1,8))
+      call assignvec(edge12(1,10),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,6),wedgever(1,12),wedgever(1,3))
+      call assignvec(edge12(1,11),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),wedgever(1,15),wedgeface(1,3),wedgever(1,9))
+      call assignvec(edge12(1,12),ver(1)) 
+
+
+      call hex20tohex27(hexver(1,1,6),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+      return
+      end	 
+!--------------------------------------------------------------------------s
+
+!--------------------------------------------------------------------  
+      subroutine ehexto8hex_quadratic(hexver,ehexver,hexss,ehexss,hasnrh) 
+!
+      real*8 hexver(3,27,8)
+      real*8 ehexver(3,20)
+      real*8 hexface(3,6)
+      real*8 hexcen(3) ! tet vol center
+      real*8 subhexver(3,20)
+      real*8 hex8(3,8),edge12(3,12) ! edge12 here follows nek definition of edge 
+
+      integer tetss(4),wedgess(5),ehexss(6),hexss(6,8)
+
+      real*8 quad(3,8),fc(3),ver(3),fc2(3),tvec1(3),tvec2(3)
+ 
+      logical hasnrh,ifnrh
+
+      do i=1,6*8
+      hexss(i,1)=0
+      enddo
+
+! get face center, but quadratically
+      call assignvec(quad(1,1),ehexver(1,1))
+      call assignvec(quad(1,2),ehexver(1,2))
+      call assignvec(quad(1,3),ehexver(1,6))
+      call assignvec(quad(1,4),ehexver(1,5))
+      call assignvec(quad(1,5),ehexver(1,9))
+      call assignvec(quad(1,6),ehexver(1,14))
+      call assignvec(quad(1,7),ehexver(1,17))
+      call assignvec(quad(1,8),ehexver(1,13))
+      call transfinite_quad2(quad(1,1),fc(1))
+	 
+      call average4vec(tvec1,quad(1,1),quad(1,2),&
+      quad(1,3),quad(1,4))
+      call average4vec(tvec2,quad(1,5),quad(1,6),&
+      quad(1,7),quad(1,8))
+      call average2vec(fc2,tvec1,tvec2)  
+      !call average2vec(hexface(1,1),fc,fc2)
+      call assignvec(hexface(1,1),fc(1))
+
+      call assignvec(quad(1,1),ehexver(1,2))
+      call assignvec(quad(1,2),ehexver(1,3))
+      call assignvec(quad(1,3),ehexver(1,7))
+      call assignvec(quad(1,4),ehexver(1,6))
+      call assignvec(quad(1,5),ehexver(1,10))
+      call assignvec(quad(1,6),ehexver(1,15))
+      call assignvec(quad(1,7),ehexver(1,18))
+      call assignvec(quad(1,8),ehexver(1,14))
+      call transfinite_quad2(quad(1,1),fc(1))
+	  
+      call average4vec(tvec1,quad(1,1),quad(1,2),&
+      quad(1,3),quad(1,4))
+      call average4vec(tvec2,quad(1,5),quad(1,6),&
+      quad(1,7),quad(1,8))
+      call average2vec(fc2,tvec1,tvec2)  
+      !call average2vec(hexface(1,2),fc,fc2)
+      call assignvec(hexface(1,2),fc(1))
+
+      call assignvec(quad(1,1),ehexver(1,3))
+      call assignvec(quad(1,2),ehexver(1,4))
+      call assignvec(quad(1,3),ehexver(1,8))
+      call assignvec(quad(1,4),ehexver(1,7))
+      call assignvec(quad(1,5),ehexver(1,11))
+      call assignvec(quad(1,6),ehexver(1,16))
+      call assignvec(quad(1,7),ehexver(1,19))
+      call assignvec(quad(1,8),ehexver(1,15))
+      call transfinite_quad2(quad(1,1),fc(1))
+      call average4vec(tvec1,quad(1,1),quad(1,2),&
+      quad(1,3),quad(1,4))
+      call average4vec(tvec2,quad(1,5),quad(1,6),&
+      quad(1,7),quad(1,8))
+      call average2vec(fc2,tvec1,tvec2)  
+      !call average2vec(hexface(1,3),fc,fc2)
+	  call assignvec(hexface(1,3),fc(1))
+
+      call assignvec(quad(1,1),ehexver(1,4))
+      call assignvec(quad(1,2),ehexver(1,1))
+      call assignvec(quad(1,3),ehexver(1,5))
+      call assignvec(quad(1,4),ehexver(1,8))
+      call assignvec(quad(1,5),ehexver(1,12))
+      call assignvec(quad(1,6),ehexver(1,13))
+      call assignvec(quad(1,7),ehexver(1,20))
+      call assignvec(quad(1,8),ehexver(1,16))
+      call transfinite_quad2(quad(1,1),fc(1))
+      call average4vec(tvec1,quad(1,1),quad(1,2),&
+      quad(1,3),quad(1,4))
+      call average4vec(tvec2,quad(1,5),quad(1,6),&
+      quad(1,7),quad(1,8))
+      call average2vec(fc2,tvec1,tvec2)  
+      !call average2vec(hexface(1,4),fc,fc2)
+      call assignvec(hexface(1,4),fc(1))
+
+      call assignvec(quad(1,1),ehexver(1,1))
+      call assignvec(quad(1,2),ehexver(1,2))
+      call assignvec(quad(1,3),ehexver(1,3))
+      call assignvec(quad(1,4),ehexver(1,4))
+      call assignvec(quad(1,5),ehexver(1,9))
+      call assignvec(quad(1,6),ehexver(1,10))
+      call assignvec(quad(1,7),ehexver(1,11))
+      call assignvec(quad(1,8),ehexver(1,12))
+      call transfinite_quad2(quad(1,1),fc(1))
+      call average4vec(tvec1,quad(1,1),quad(1,2),&
+      quad(1,3),quad(1,4))
+      call average4vec(tvec2,quad(1,5),quad(1,6),&
+      quad(1,7),quad(1,8))
+      call average2vec(fc2,tvec1,tvec2)  
+      !call average2vec(hexface(1,5),fc,fc2)
+      call assignvec(hexface(1,5),fc(1))
+
+      call assignvec(quad(1,1),ehexver(1,5))
+      call assignvec(quad(1,2),ehexver(1,6))
+      call assignvec(quad(1,3),ehexver(1,7))
+      call assignvec(quad(1,4),ehexver(1,8))
+      call assignvec(quad(1,5),ehexver(1,17))
+      call assignvec(quad(1,6),ehexver(1,18))
+      call assignvec(quad(1,7),ehexver(1,19))
+      call assignvec(quad(1,8),ehexver(1,20))
+      call transfinite_quad2(quad(1,1),fc(1))
+      call average4vec(tvec1,quad(1,1),quad(1,2),&
+      quad(1,3),quad(1,4))
+      call average4vec(tvec2,quad(1,5),quad(1,6),&
+      quad(1,7),quad(1,8))
+      call average2vec(fc2,tvec1,tvec2)  
+      !call average2vec(hexface(1,6),fc,fc2)
+      call assignvec(hexface(1,6),fc(1))
+
+! get hex center
+      call average6vec(hexcen(1),hexface(1,1),hexface(1,2), &
+      hexface(1,3),hexface(1,4),hexface(1,5),hexface(1,6))
+
+!  hex 1
+      hexss(1,1) = ehexss(1)
+      hexss(4,1) = ehexss(4)
+      hexss(5,1) = ehexss(5)
+
+      call assignvec(hex8(1,1),ehexver(1,1)) 
+      call assignvec(hex8(1,2),ehexver(1,9)) 
+      call assignvec(hex8(1,3),hexface(1,5)) 
+      call assignvec(hex8(1,4),ehexver(1,12))
+      call assignvec(hex8(1,5),ehexver(1,13)) 
+      call assignvec(hex8(1,6),hexface(1,1)) 
+      call assignvec(hex8(1,7),hexcen(1))
+      call assignvec(hex8(1,8),hexface(1,4))
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,1),ehexver(1,9),ehexver(1,2))
+      call assignvec(edge12(1,1),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,9),hexface(1,5),ehexver(1,11))
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,12),hexface(1,5),ehexver(1,10))
+      call assignvec(edge12(1,3),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,1),ehexver(1,12),ehexver(1,4))
+      call assignvec(edge12(1,4),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,13),hexface(1,1),ehexver(1,14))
+      call assignvec(edge12(1,5),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,1),hexcen(1),hexface(1,3))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,4),hexcen(1),hexface(1,2))
+      call assignvec(edge12(1,7),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,13),hexface(1,4),ehexver(1,16))
+      call assignvec(edge12(1,8),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,1),ehexver(1,13),ehexver(1,5))
+      call assignvec(edge12(1,9),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,9),hexface(1,1),ehexver(1,17))
+      call assignvec(edge12(1,10),ver(1))
+      call quick_quater_point_from_curve(ver(1),hexface(1,5),hexcen(1),hexface(1,6))
+      call assignvec(edge12(1,11),ver(1)) 
+     ! call quick_quater_point_from_curve(ver(1),ehexver(1,2),hexface(1,4),ehexver(1,20)) ! error !
+      call quick_quater_point_from_curve(ver(1),ehexver(1,12),hexface(1,4),ehexver(1,20))
+      call assignvec(edge12(1,12),ver(1)) 
+
+      call hex20tohex27(hexver(1,1,1),hex8(1,1),edge12(1,1))  ! edge should follow nek edge order, not exo edge order
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+!  hex 2
+      hexss(1,2) = ehexss(1)
+      hexss(2,2) = ehexss(2)
+      hexss(5,2) = ehexss(5)
+
+      call assignvec(hex8(1,1),ehexver(1,9)) 
+      call assignvec(hex8(1,2),ehexver(1,2)) 
+      call assignvec(hex8(1,3),ehexver(1,10)) 
+      call assignvec(hex8(1,4),hexface(1,5))
+      call assignvec(hex8(1,5),hexface(1,1)) 
+      call assignvec(hex8(1,6),ehexver(1,14)) 
+      call assignvec(hex8(1,7),hexface(1,2)) 
+      call assignvec(hex8(1,8),hexcen(1))
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,2),ehexver(1,9),ehexver(1,1))
+      call assignvec(edge12(1,1),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,2),ehexver(1,10),ehexver(1,3))
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,10),hexface(1,5),ehexver(1,12))
+      call assignvec(edge12(1,3),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,9),hexface(1,5),ehexver(1,11))
+      call assignvec(edge12(1,4),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,14),hexface(1,1),ehexver(1,13))
+      call assignvec(edge12(1,5),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,14),hexface(1,2),ehexver(1,15))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,2),hexcen(1),hexface(1,4))
+      call assignvec(edge12(1,7),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,1),hexcen(1),hexface(1,3))
+      call assignvec(edge12(1,8),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,9),hexface(1,1),ehexver(1,17))
+      call assignvec(edge12(1,9),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,2),ehexver(1,14),ehexver(1,6))
+      call assignvec(edge12(1,10),ver(1))
+      call quick_quater_point_from_curve(ver(1),ehexver(1,10),hexface(1,2),ehexver(1,18))
+      call assignvec(edge12(1,11),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,5),hexcen(1),hexface(1,6))
+      call assignvec(edge12(1,12),ver(1)) 
+
+      call hex20tohex27(hexver(1,1,2),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+!  hex 3
+      hexss(2,3) = ehexss(2)
+      hexss(3,3) = ehexss(3)
+      hexss(5,3) = ehexss(5)
+
+      call assignvec(hex8(1,1),hexface(1,5)) 
+      call assignvec(hex8(1,2),ehexver(1,10)) 
+      call assignvec(hex8(1,3),ehexver(1,3)) 
+      call assignvec(hex8(1,4),ehexver(1,11))
+      call assignvec(hex8(1,5),hexcen(1)) 
+      call assignvec(hex8(1,6),hexface(1,2)) 
+      call assignvec(hex8(1,7),ehexver(1,15))
+      call assignvec(hex8(1,8),hexface(1,3)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,10),hexface(1,5),ehexver(1,12))
+      call assignvec(edge12(1,1),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,3),ehexver(1,10),ehexver(1,2))
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,3),ehexver(1,11),ehexver(1,4))
+      call assignvec(edge12(1,3),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,11),hexface(1,5),ehexver(1,9))
+      call assignvec(edge12(1,4),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),hexface(1,2),hexcen(1),hexface(1,4))
+      call assignvec(edge12(1,5),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,15),hexface(1,2),ehexver(1,14))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,15),hexface(1,3),ehexver(1,16))
+      call assignvec(edge12(1,7),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,3),hexcen(1),hexface(1,1))
+      call assignvec(edge12(1,8),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),hexface(1,5),hexcen(1),hexface(1,6))
+      call assignvec(edge12(1,9),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,10),hexface(1,2),ehexver(1,18))
+      call assignvec(edge12(1,10),ver(1))
+      call quick_quater_point_from_curve(ver(1),ehexver(1,3),ehexver(1,15),ehexver(1,7))
+      call assignvec(edge12(1,11),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,11),hexface(1,3),ehexver(1,19))
+      call assignvec(edge12(1,12),ver(1)) 
+
+      call hex20tohex27(hexver(1,1,3),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+
+!  hex 4
+      hexss(3,4) = ehexss(3)
+      hexss(4,4) = ehexss(4)
+      hexss(5,4) = ehexss(5)
+
+      call assignvec(hex8(1,1),ehexver(1,12)) 
+      call assignvec(hex8(1,2),hexface(1,5)) 
+      call assignvec(hex8(1,3),ehexver(1,11)) 
+      call assignvec(hex8(1,4),ehexver(1,4))
+      call assignvec(hex8(1,5),hexface(1,4)) 
+      call assignvec(hex8(1,6),hexcen(1)) 
+      call assignvec(hex8(1,7),hexface(1,3)) 
+      call assignvec(hex8(1,8),ehexver(1,16)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,12),hexface(1,5),ehexver(1,10))
+      call assignvec(edge12(1,1),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,11),hexface(1,5),ehexver(1,9))
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,4),ehexver(1,11),ehexver(1,3))
+      call assignvec(edge12(1,3),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,4),ehexver(1,12),ehexver(1,1))
+      call assignvec(edge12(1,4),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),hexface(1,4),hexcen(1),hexface(1,2))
+      call assignvec(edge12(1,5),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,3),hexcen(1),hexface(1,1))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,16),hexface(1,3),ehexver(1,15))
+      call assignvec(edge12(1,7),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,16),hexface(1,4),ehexver(1,13))
+      call assignvec(edge12(1,8),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,12),hexface(1,4),ehexver(1,20))
+      call assignvec(edge12(1,9),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,5),hexcen(1),hexface(1,6))
+      call assignvec(edge12(1,10),ver(1))
+      call quick_quater_point_from_curve(ver(1),ehexver(1,11),hexface(1,3),ehexver(1,19))
+      call assignvec(edge12(1,11),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,4),ehexver(1,16),ehexver(1,8))
+      call assignvec(edge12(1,12),ver(1)) 
+
+
+      call hex20tohex27(hexver(1,1,4),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+!  hex 5
+      hexss(1,5) = ehexss(1)
+      hexss(4,5) = ehexss(4)
+      hexss(6,5) = ehexss(6)
+
+
+      call assignvec(hex8(1,1),ehexver(1,13)) 
+      call assignvec(hex8(1,2),hexface(1,1)) 
+      call assignvec(hex8(1,3),hexcen(1)) 
+      call assignvec(hex8(1,4),hexface(1,4))
+      call assignvec(hex8(1,5),ehexver(1,5)) 
+      call assignvec(hex8(1,6),ehexver(1,17)) 
+      call assignvec(hex8(1,7),hexface(1,6)) 
+      call assignvec(hex8(1,8),ehexver(1,20)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,13),hexface(1,1),ehexver(1,14))
+      call assignvec(edge12(1,1),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,1),hexcen(1),hexface(1,3))
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,4),hexcen(1),hexface(1,2))
+      call assignvec(edge12(1,3),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,13),hexface(1,4),ehexver(1,16))
+      call assignvec(edge12(1,4),ver(1))
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,5),ehexver(1,17),ehexver(1,6))
+      call assignvec(edge12(1,5),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,17),hexface(1,6),ehexver(1,19))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,20),hexface(1,6),ehexver(1,18))
+      call assignvec(edge12(1,7),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,5),ehexver(1,20),ehexver(1,8))
+      call assignvec(edge12(1,8),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,5),ehexver(1,13),ehexver(1,1))
+      call assignvec(edge12(1,9),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,17),hexface(1,1),ehexver(1,9))
+      call assignvec(edge12(1,10),ver(1))
+      call quick_quater_point_from_curve(ver(1),hexface(1,6),hexcen(1),hexface(1,5))
+      call assignvec(edge12(1,11),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,20),hexface(1,4),ehexver(1,12))
+      call assignvec(edge12(1,12),ver(1)) 
+
+      call hex20tohex27(hexver(1,1,5),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+!  hex 6
+      hexss(1,6) = ehexss(1)
+      hexss(2,6) = ehexss(2)
+      hexss(6,6) = ehexss(6)
+
+      call assignvec(hex8(1,1),hexface(1,1)) 
+      call assignvec(hex8(1,2),ehexver(1,14)) 
+      call assignvec(hex8(1,3),hexface(1,2)) 
+      call assignvec(hex8(1,4),hexcen(1))
+      call assignvec(hex8(1,5),ehexver(1,17)) 
+      call assignvec(hex8(1,6),ehexver(1,6)) 
+      call assignvec(hex8(1,7),ehexver(1,18)) 
+      call assignvec(hex8(1,8),hexface(1,6)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,14),hexface(1,1),ehexver(1,13))
+      call assignvec(edge12(1,1),ver(1)) 
+      !call quick_quater_point_from_curve(ver(1),ehexver(1,14),hexface(1,1),ehexver(1,15)) !! error here!
+      call quick_quater_point_from_curve(ver(1),ehexver(1,14),hexface(1,2),ehexver(1,15))  ! this is the correct version!
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,2),hexcen(1),hexface(1,4))
+      call assignvec(edge12(1,3),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,1),hexcen(1),hexface(1,3))
+      call assignvec(edge12(1,4),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,6),ehexver(1,17),ehexver(1,5))
+      call assignvec(edge12(1,5),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,6),ehexver(1,18),ehexver(1,7))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,18),hexface(1,6),ehexver(1,20))
+      call assignvec(edge12(1,7),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,17),hexface(1,6),ehexver(1,19))
+      call assignvec(edge12(1,8),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,17),hexface(1,1),ehexver(1,9))
+      call assignvec(edge12(1,9),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,6),ehexver(1,14),ehexver(1,2))
+      call assignvec(edge12(1,10),ver(1))
+      call quick_quater_point_from_curve(ver(1),ehexver(1,18),hexface(1,2),ehexver(1,10))
+      call assignvec(edge12(1,11),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,6),hexcen(1),hexface(1,5))
+      call assignvec(edge12(1,12),ver(1)) 
+
+
+      call hex20tohex27(hexver(1,1,6),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+!  hex 7
+      hexss(2,7) = ehexss(2)
+      hexss(3,7) = ehexss(3)
+      hexss(6,7) = ehexss(6)
+
+
+      call assignvec(hex8(1,1),hexcen(1)) 
+      call assignvec(hex8(1,2),hexface(1,2))
+      call assignvec(hex8(1,3),ehexver(1,15)) 
+      call assignvec(hex8(1,4),hexface(1,3))
+      call assignvec(hex8(1,5),hexface(1,6))
+      call assignvec(hex8(1,6),ehexver(1,18)) 
+      call assignvec(hex8(1,7),ehexver(1,7))
+      call assignvec(hex8(1,8),ehexver(1,19)) 
+
+      call quick_quater_point_from_curve(ver(1),hexface(1,2),hexcen(1),hexface(1,4))
+      call assignvec(edge12(1,1),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,15),hexface(1,2),ehexver(1,14))
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,15),hexface(1,3),ehexver(1,16))
+      call assignvec(edge12(1,3),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,3),hexcen(1),hexface(1,1))
+      call assignvec(edge12(1,4),ver(1)) 
+
+
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,18),hexface(1,6),ehexver(1,20))
+      call assignvec(edge12(1,5),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,7),ehexver(1,18),ehexver(1,6))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,7),ehexver(1,19),ehexver(1,8))
+      call assignvec(edge12(1,7),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,19),hexface(1,6),ehexver(1,17))
+      call assignvec(edge12(1,8),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),hexface(1,6),hexcen(1),hexface(1,5))
+      call assignvec(edge12(1,9),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,18),hexface(1,2),ehexver(1,10))
+      call assignvec(edge12(1,10),ver(1))
+      call quick_quater_point_from_curve(ver(1),ehexver(1,7),ehexver(1,15),ehexver(1,3))
+      call assignvec(edge12(1,11),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,19),hexface(1,3),ehexver(1,11))
+      call assignvec(edge12(1,12),ver(1)) 
+
+      call hex20tohex27(hexver(1,1,7),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+!  hex 8
+      hexss(3,8) = ehexss(3)
+      hexss(4,8) = ehexss(4)
+      hexss(6,8) = ehexss(6)
+
+
+      call assignvec(hex8(1,1),hexface(1,4))
+      call assignvec(hex8(1,2),hexcen(1))
+      call assignvec(hex8(1,3),hexface(1,3)) 
+      call assignvec(hex8(1,4),ehexver(1,16)) 
+      call assignvec(hex8(1,5),ehexver(1,20))
+      call assignvec(hex8(1,6),hexface(1,6))
+      call assignvec(hex8(1,7),ehexver(1,19))
+      call assignvec(hex8(1,8),ehexver(1,8)) 
+
+      call quick_quater_point_from_curve(ver(1),hexface(1,4),hexcen(1),hexface(1,2))
+      call assignvec(edge12(1,1),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,3),hexcen(1),hexface(1,1))
+      call assignvec(edge12(1,2),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,16),hexface(1,3),ehexver(1,15))
+      call assignvec(edge12(1,3),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,16),hexface(1,4),ehexver(1,13))
+      call assignvec(edge12(1,4),ver(1)) 
+
+      call quick_quater_point_from_curve(ver(1),ehexver(1,20),hexface(1,6),ehexver(1,18))
+      call assignvec(edge12(1,5),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,19),hexface(1,6),ehexver(1,17))
+      call assignvec(edge12(1,6),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,8),ehexver(1,19),ehexver(1,7))
+      call assignvec(edge12(1,7),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,8),ehexver(1,20),ehexver(1,5))
+      call assignvec(edge12(1,8),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,20),hexface(1,4),ehexver(1,12))
+      call assignvec(edge12(1,9),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),hexface(1,6),hexcen(1),hexface(1,5))
+      call assignvec(edge12(1,10),ver(1))
+      call quick_quater_point_from_curve(ver(1),ehexver(1,19),hexface(1,3),ehexver(1,11))
+      call assignvec(edge12(1,11),ver(1)) 
+      call quick_quater_point_from_curve(ver(1),ehexver(1,8),ehexver(1,16),ehexver(1,4))
+      call assignvec(edge12(1,12),ver(1)) 
+
+
+      call hex20tohex27(hexver(1,1,8),hex8(1,1),edge12(1,1))
+
+      ifnrh = .false.  
+      call nek_check_non_right_hand_per_element(hex8,ifnrh)
+      hasnrh = (hasnrh.or.ifnrh) ! 
+
+      return
+      end 
 ! -------------------------------------------------------------------
       subroutine hex20tohex27(hex27,hex8,edge12)
 !  convert hex8 coordinates to hex27 coordinates in nek.
