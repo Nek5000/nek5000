@@ -179,3 +179,68 @@ c-----------------------------------------------------------------------
       return
       end
 c-----------------------------------------------------------------------
+      logical function strcmp(str1in,str2in)
+
+      character*80 str1in
+      character*80 str1
+      character*1  vec1(80)
+      equivalence (vec1,str1)
+
+      character*80 str2in
+      character*80 str2
+      character*1  vec2(80)
+      equivalence (vec2,str2)
+
+      strcmp = .true.
+
+      call chcopy(str1,str1in,80)
+      call chcopy(str2,str2in,80)
+
+      n1 = ltrunc(str1,80)
+      n2 = ltrunc(str2,80)
+      if (n1.ne.n2) then
+         strcmp = .false.
+         return
+      endif
+
+      do i=1,n1
+         if (vec1(i).ne.vec2(i)) then
+            strcmp = .false.
+            return
+         endif
+      enddo
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine scan_all(num,file,input,len)
+c
+c     open file, scan and count how many input is found
+c     close file and return the number
+c
+      character*1 input(1)
+      integer num,infile
+c
+      character*80 file, string
+c
+      num = 0
+      infile = 20
+      open(unit=infile, file=file, err=100)
+      do line=1,100000
+         read (infile,80,end=100,err=101) string
+         if (indx1(string,input,len).ne.0) then
+            num = num + 1
+         endif
+      enddo
+   80 format(a80)
+
+ 100  continue
+      close (unit=infile)
+      return
+
+ 101  continue
+      write(6,*)'Error in scan_all',file
+
+      return
+      end
+c-----------------------------------------------------------------------

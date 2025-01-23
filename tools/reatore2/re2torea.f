@@ -38,7 +38,7 @@ c     an ascii rea file for just the parameters
 
       real*8 rbc,rcurve
       character*3 cbc(6,nelm)
-      logical ifbswap,if_byte_swap_test,ifexist
+      logical ifbswap,if_byte_swap_test,ifexist,strcmp
       
 c     for workstation:
       in = 5
@@ -55,6 +55,11 @@ c     Get file name
       call blank(fout,80)
       read(in,80) fout
       lou = ltrunc(fout,80)
+
+      if (strcmp(fin,fout)) then
+         write(6,*) 'Abort: filenames cannot be the same'
+         stop
+      endif
 
       fbin = fin
       call chcopy(fin1(len+1),'.rea',4)
@@ -85,9 +90,11 @@ c     Get file name
       do ii=1,nparam
          read(10,80) sstring
          if(ii.eq.23) read(sstring,*) rnpscal
+         if(ii.eq.32) read(sstring,*) rBCrea
          write(11,80) sstring
       enddo
       npscal=rnpscal
+      nBCrea=rBCrea
 
       call scanout(sstring,'LOGICAL',7,10,11)
       read(sstring,*) nlogical
@@ -105,12 +112,36 @@ c     Get file name
 
       call blank(hdr,80)
       call byte_read(hdr,20,ierr)
-      read (hdr,1) version,nelt,ndim,nelv
-      nelt=abs(nelt)
+
+    1 format(a5)
+    2 format(a5,i9,i3,i9)
+    3 format(a5,i16,i3,i16,i4)
  
-      wdsizi = 4
-      if(version.eq.'#v002') wdsizi = 8
-      if(version.eq.'#v003') wdsizi = 8
+      read (hdr,1) version
+
+      if (version.eq.'#v001') then
+         wdsizi = 4
+         read (hdr,2) version,nelt,ndim,nelv
+      elseif (version.eq.'#v002') then
+         wdsizi = 8
+         read (hdr,2) version,nelt,ndim,nelv
+      elseif (version.eq.'#v003') then
+         wdsizi = 8
+         read (hdr,2) version,nelt,ndim,nelv
+      elseif (version.eq.'#v004') then
+         wdsizi = 8
+         read (hdr,3) version,nelt,ndim,nelv,nBCre2
+         if (nBCrea.ne.nBCre2) then
+            write(6,4) nBCrea,nBCre2
+            call exitt
+         endif
+    4    format('Error: nBC mismatched! rea=',i3,' re2=',i3)
+      else
+         write(6,*) 'Error: Unsupported version number',version
+         call exitt
+      endif
+
+      nelt=abs(nelt)
 
       write(11,*) 
      & ' 30.0000  20.0000  -6.00000  -10.0000 XFAC,YFAC,XZERO,YZERO'
@@ -118,8 +149,6 @@ c     Get file name
      & '**MESH DATA** 6 lines are X,Y,Z;X,Y,Z. Columns corners 1-4;5-8'
 
       write(11,*) nelt,ndim,nelv
-
- 1    format(a5,i9,i3,i9)
 
       call byte_read(test,1,ierr)
       ifbswap=if_byte_swap_test(test)

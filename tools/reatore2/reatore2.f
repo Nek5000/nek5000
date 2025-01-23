@@ -25,7 +25,7 @@ c     an ascii rea file for just the parameters
       character*3 cbc(6,lelt)
       integer e,f
       character*1 ccurve(4)
-      logical ifflow,ifheat
+      logical ifflow,ifheat,strcmp
 
       character*80 hdr
       real*4 test
@@ -47,6 +47,11 @@ c     an ascii rea file for just the parameters
       fbout = fout
       lou = ltrunc(fout,80)
 
+      if (strcmp(file,fout)) then
+         write(6,*) 'Abort: filenames cannot be the same'
+         stop
+      endif
+
       write(6,*)
       write(6,'(A)') 'Start converting ...'
       write(6,*)
@@ -54,6 +59,8 @@ c     an ascii rea file for just the parameters
       call chcopy(file1(len+1),'.rea',4)
       call chcopy(fout1(lou+1),'.rea',4)
       call chcopy(fbout1(lou+1),'.re2' // char(0),5)
+
+      call scan_all(nBCrea,file,"BOUN",4)
 
       open(unit=10, file=file)
       open(unit=11, file=fout)
@@ -74,8 +81,14 @@ c     an ascii rea file for just the parameters
       endif
 
       call blank(hdr,80)
-      write(hdr,1) nel,ndim,nelv
-    1 format('#v002',i9,i3,i9,' this is the hdr')
+      if (nel.lt.10000000) then
+         write(hdr,1) nel,ndim,nelv
+    1    format('#v002',i9,i3,i9,' this is the hdr')
+      else 
+         write(hdr,2) nel,ndim,nelv,nBCrea
+    2    format('#v004',i16,i3,i16,i4,' hdr')
+      endif 
+
       call byte_write(hdr,20,ierr)   ! assumes byte_open() already issued
       call byte_write(test,1,ierr)   ! write the endian discriminator
 
@@ -227,3 +240,4 @@ c-----------------------------------------------------------------------
  
       return
       end
+c-----------------------------------------------------------------------
